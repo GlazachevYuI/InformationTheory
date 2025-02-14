@@ -58,7 +58,7 @@ class TKinetics:
     def InitNoise(self, SD):
         self.SD=np.random.normal(0, SD, self.PointNumber)
 
-class TRegulatory(abc.ABC):
+class FBasic(abc.ABC):
     def __init__(self,p,a):
         self.p=p
         self.a=a
@@ -71,13 +71,17 @@ class TRegulatory(abc.ABC):
     def Gradient(self): pass
     @abc.abstractmethod
     def Hessian(self): pass
+    @abc.abstractmethod
+    def GradJ(self,j): pass
+    @abc.abstractmethod
+    def HessJK(self,j,k):pass
     
     def Recalculate(self):
         self.Value()
         self.Gradient()
         self.Hessian()
         
-class Scilling(TRegulatory):
+class Scilling(FBasic):
     def __init__(self,p,a):
         super().__init__(p,a)
     def Value(self):
@@ -90,12 +94,17 @@ class Scilling(TRegulatory):
     def Hessian(self):
         self.Hess=np.diag(-1/self.p)
         return self.Hess
+    def GradJ(self,j): return -np.log(abs(self.p[j]))
+    def HessJK(self,j,k):
+            if j==k: return -1/self.p[j]
+            else: return 0.
+        
 #    def Recalulate(self):
 #        self.Value()
 #        self.Gradient()
 #        self.Hessian()
     
-class Chi2(TRegulatory):
+class Chi2(FBasic):
     def __init__(self,p,a,X,Y,R):
         super().__init__(p,a)
         self.X=X
@@ -115,10 +124,10 @@ class Chi2(TRegulatory):
     def Residuals(self):
         self.Res = self.Y - self.T
         return self.Res
-    def Value(self,Y,T,StD2):
-        self.Val=np.sum(np.square(Y-T))/(len(Y)*StD2)
+    def Value(self):
+        self.Val=np.sum(np.square(self.Y-self.T))/(len(self.Y)*self.StD2)
         return self.Val
-    def Gradient(self,p,a,X,Y,T):
+    def Gradient(self):
         for j in range(len(self.p)):
             for i in range(len(self.Res)):
                 self.Grad[j]+=-2/(len(self.Res)*self.StD2)*self.Res[i]*Kernel(self.X[i],self.a[j])
@@ -130,11 +139,13 @@ class Chi2(TRegulatory):
                     self.Hess[j1,j2]+=2/(len(self.X)*self.StD2)*Kernel(self.X[i],self.a[j1])*Kernel(self.X[i],self.a[j2])
                     self.Hess[j2,j1]=self.Hess[j1,j2]
         return self.Hess
-    def GradJ(self,j): G=0.
-        for i in range(len(self.Res)):
-            G+=-2/(len(self.Y)*self.StD2)*(self.Y-self.T)*Kernel(self.X[i],self.a[j])
+    def GradJ(self,j):
+        G=0.
+        for i in range(len(self.Y)):
+            G+=-2/(len(self.Y)*self.StD2)*(self.Y[i]-self.T[i])*Kernel(self.X[i],self.a[j])
         return G        
-    def HessJK(self,j,k): H=0.
+    def HessJK(self,j,k):
+        H=0.
         for i in range(len(self.X)):
             H+=2/(len(self.X)*self.StD2)*Kernel(self.X[i],self.a[j])*Kernel(self.X[i],self.a[k])
         return H
@@ -143,7 +154,7 @@ class Chi2(TRegulatory):
         self.Residuals()
         super().Recalculate()
 
-class TotalFunctional(TRegulatory):
+class TotalFunctional(FBasic):
     def __init__(self,u,prm,X,Y,R):
         super().__init__(u,prm)
         self.vChi2=Chi2(u[:len(u)-1],prm,X,Y,R)
@@ -155,13 +166,27 @@ class TotalFunctional(TRegulatory):
         self.Val=-self.vSci.Val+self.lagr*(self.vChi2.Val-1)
         return self.Val
     def Gradient(self):
-        self.Grad[:len(self.vChi2.Grad)]=-self.vSci.Grad+self.lagr*self.vChi2.Grad
-        self.Grad[len(self.vChi2.Grad)]=self.vChi2.Val-1
+        for j in range(len(self.p)): self.Grad[j]=self.GradJ(j)
+#        self.Grad[:len(self.vChi2.Grad)]=-self.vSci.Grad+self.lagr*self.vChi2.Grad
+#        self.Grad[len(self.vChi2.Grad)]=self.vChi2.Val-1
         return self.Grad
     def Hessian(self):
-        self.Hess=np.block([[-self.vSci.Hess+self.lagr*self.vChi2.Hess,self.vChi2.Grad.reshape(len(self.vChi2.Grad),1)],
-                            [self.vChi2.Grad,np.zeros(1)]])
+#        self.Hess=np.block([[-self.vSci.Hess+self.lagr*self.vChi2.Hess,self.vChi2.Grad.reshape(len(self.vChi2.Grad),1)],
+#                            [self.vChi2.Grad,np.zeros(1)]])
+        for j in range(len(self.p)):
+            for k in range(j,len(self.p)):
+                self.Hess[j,k]=self.HessJK(j,k)
+                self.Hess[k,j]=self.Hess[j,k]
         return self.Hess
+    def GradJ(self,j):
+            if j< len(self.vSci.p): return -self.vSci.GradJ(j)+self.lagr*self.vChi2.GradJ(j)
+            else: return self.vChi2.Val-1
+    def HessJK(self,j,k):
+            if (j<len(self.vSci.p))and (k<len(self.vSci.p)): return -self.vSci.HessJK(j,k)+self.lagr*self.vChi2.HessJK(j,k)
+            if j==len(self.vSci.p) and (k<len(self.vSci.p)): return self.GradJ(k)
+            if k==len(self.vSci.p) and (j<len(self.vSci.p)): return self.GradJ(j)
+            if k==len(self.vSci.p) and (k==len(self.vSci.p)): return 0.
+
     def Recalculate(self):
         self.vChi2.Recalculate()
         self.vSci.Recalculate()
