@@ -240,4 +240,4 @@ Distr/=sum(Kinetics.Y)/(Distr @ Alpha) # нормировка на интегр�
 FF=TotalFunctional(GlobalP,Alpha,Kinetics.X,Kinetics.Y,Kinetics.R)
 FF.Recalculate()
 
-PlotData()
+#PlotData()
