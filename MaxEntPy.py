@@ -14,7 +14,7 @@ def Cronecker(x,a):
     else: return 0.
 
 
-def GetValue(Name,xdata,ydata, tdata, pdata, adata, kernel):
+def GetValue(Name,xdata=[],ydata=[], tdata=[], pdata=[], adata=[], kernel=[]):
     val=0.
     match Name:
         case 'Chi2': val=np.sum(np.square(ydata-tdata))/len(ydata)
@@ -117,6 +117,9 @@ class MaxEntropy:
             self.Hessian[j,len(self.u)-1]=self.Grads['Chi2'][j]/self.disp
             self.Hessian[len(self.u)-1,j]=self.Hessian[j,len(self.u)-1]
 
+#        self.fig2, self.axd2 =plt.subplot_mosaic([['Kinetics'],['Residuals'],['Distribution']],
+#                                            figsize=(6,6), height_ratios=[2,1,2],
+#                                            tight_layout=True, label='MaxEtr analisys')
         
     @property
     def p(self): return self.u[:self.tData.N]
@@ -142,8 +145,14 @@ class MaxEntropy:
     def X(self): return self.eData.X
     @property
     def Y(self): return self.eData.Y
-
     
+    def GetTotalValue(self, Y=[], T=[], P=[],lagrange=0):
+        if len(Y)==0: Y=self.Y
+        if len(T)==0: T=self.T
+        if len(P)==0: P=self.p
+        if lagrange==0: lagrange=self.lagr
+        return -GetValue('Scilling', pdata=P)+lagrange*(GetValue('Chi2',ydata=Y, tdata=T, pdata=P)/self.disp-1)
+        
     def UpdateAll(self):
         self.T=GetTheory(self.eData,self.tData)
         self.Res=self.eData.Y-self.T
@@ -176,77 +185,121 @@ class MaxEntropy:
         self.du=lg.solve(self.Hessian,-self.Grad,assume_a='sym')
 
     def ShowChange(self,dp):
-        T=GetTheory(self.eData,tData(self.p+dp,self.tData.a,ExpDecay))
-        res=MEM.Y-T
+        self.T=GetTheory(self.eData,tData(self.p+dp,self.tData.a,ExpDecay))
+        res=Y-self.T
         sd=np.std(res)
         fig, (ax1,ax2,ax3)=plt.subplots(3,1)
-        ax1.plot(MEM.X,MEM.Y, label='Experiment')
-        ax1.plot(MEM.X,T, label='Theory')
+        ax1.plot(X,Y, label='Experiment')
+        ax1.plot(X,self.T, label='Theory')
         ax1.legend()
-        ax2.plot(MEM.tData.a, MEM.p+dp,'.', label='Distribution')
+        ax2.plot(self.tData.a, self.p+dp,'.', label='Distribution')
         ax2.set_xscale('log')
         ax2.legend()
-        ax3.plot(MEM.eData.X,res, label=f'Residuals ({round(sd,4)})')
+        ax3.plot(X,res, label=f'Residuals ({round(sd,4)})')
         ax3.legend()
         plt.show()
 
+    def Show(self):
+        for Name in list(self.axd2.keys()):
+            self.axd2[Name].clear()
+            match Name:
+                case 'Kinetics':
+                    self.axd2[Name].plot(self.X,self.Y,label='Experiment')
+                    self.axd2[Name].plot(self.X,self.T, label='Theory')
+                case 'Residuals':
+                    self.axd2[Name].plot(self.X,(self.Y-self.T), label='Residuals')
+                case 'Distribution':
+                    self.axd2[Name].plot(self.tData.a, self.p,'.', label='Distribution')
+                    self.axd2[Name].semilogx(self.tData.a, self.p)
+            self.axd2[Name].legend()
+        plt.show()
+                    
+
+
+#        self.ax1.clear()
+#        self.ax2.clear()
+#        self.ax3.clear()
+        
+#        self.ax1.plot(self.X,self.Y,label='Experiment')
+#        self.ax1.plot(self.X,self.T, label='Theory')
+#        self.ax1.legend()
+#        self.ax2.plot(self.tData.a, self.p,'.', label='Distribution')
+#        self.ax2.set_xscale('log')
+#        self.ax2.legend()
+#        self.ax3.plot(self.X,(self.Y-self.T), label='Residuals')
+#        self.ax3.legend()
+#        plt.show()
+        
     def ShowAnalisys(self,n):
         chi2=np.zeros(n)
         sci=chi2.copy()
         total=chi2.copy()
         for i in range(n):
             pp=self.p+self.dp*i/10
+            ll=self.lagr+self.dlagr*i/10
             t=GetTheory(self.eData,tData(pp,self.tData.a,ExpDecay))
             chi2[i]=GetValue('Chi2',X,Y,t,pp,self.tData.a,ExpDecay)/self.disp
             sci[i]=GetValue('Scilling',X,Y,t,pp,self.tData.a,ExpDecay)
-            total[i]=-sci[i]+self.lagr*(chi2[i]-1)
+            total[i]=-sci[i]+ll*(chi2[i]-1)
         plt.plot(chi2, label='Chi2')
         plt.plot(sci, label='Scilling')
         plt.plot(total, label='Total')
         plt.legend()
         plt.show()
-    def Tune(self):
-        H2=np.zeros(shape=(2,2))
-        G2=np.zeros(2)
-#        H2[0,0]=self.lagr*(self.dp @ (self.Hesses['Chi2'] @ self.dp))/self.disp - self.dp @(self.Hesses['Scilling']*self.dp)
-        H2[0,0]=self.dp @ self.Hessian[:len(self.dp),:len(self.dp)] @ self.dp
-        H2[1,0]=self.dlagr*(self.Grads['Chi2'] @ self.p)/self.disp
-        H2[0,1]=H2[1,0]
-        G2[0]=(-self.Grads['Scilling'] +self.lagr*self.Grads['Chi2']/self.disp) @ self.dp
-        G2[1]=self.dlagr*(self.Vals['Chi2']/self.disp-1)
-        return lg.solve(H2,-G2,assume_a='sym')
-    def TuneGolden(self,k):
-
-        def TotalVal(e):
-            T=GetTheory(self.eData,tData(self.p+e*self.dp,self.tData.a,self.tData.kernel))
-            V1=-GetValue('Scilling',X, Y, T, self.p+e*self.dp, self.tData.a, self.tData.kernel)
-            V2=(GetValue('Chi2',X, Y, T, self.p+e*self.dp, self.tData.a, self.tData.kernel)/self.disp-1)*(self.lagr+k*self.dlagr)
-            return V1+V2
         
-        return optimize.golden(TotalVal, brack=(0,1), maxiter=10, full_output=True) 
+    def MyGolden(self,lagr):
+        dT=GetTheory(self.eData,tData(self.dp,self.tData.a,self.tData.kernel))
+        grat=1-(np.sqrt(5.)-1)/2
+        r=[0.,grat,1-grat,1.]
+        def Func(k): return self.GetTotalValue(Y,self.T+k*dT,self.p+k*self.dp,lagr)
+        f1=Func(r[1])
+        f2=Func(r[2])
+        while abs(r[3]-r[0])>0.05:
+            if f1<f2:
+                r[3]=r[2]
+                r[2]=r[1]
+                f2=f1
+                r[1]=r[0]+grat*(r[3]-r[0])
+                f1=Func(r[1])
+            else:
+                r[0]=r[1]
+                r[1]=r[2]
+                f1=f2
+                r[2]=r[3]-(r[3]-r[0])*grat
+                f2=Func(r[2])
+        return (r[0]+r[3])/2, min(f1,f2)
+    def Add_dp(self,p,dp):
+        for j in range(len(p)):
+            if dp[j] <= -p[j]: p[j]=p[j]/10
+            else: p[j]+=dp[j]
+        return p
         
-        
-def PlotData():
+def PlotData(myMEM):
     fig, (ax1,ax2,ax3)=plt.subplots(3,1)
-    ax1.plot(MEM.X,MEM.Y,label='Experiment')
-    ax1.plot(MEM.X,MEM.T, label='Theory')
+    ax1.plot(meMEM.X,myMEM.Y,label='Experiment')
+    ax1.plot(myMEM.X,myMEM.T, label='Theory')
     ax1.legend()
-    ax2.plot(MEM.tData.a, MEM.p,'.', label='Distribution')
+    ax2.plot(myMEM.tData.a, myMEM.p,'.', label='Distribution')
     ax2.set_xscale('log')
     ax2.legend()
-    ax3.plot(MEM.eData.X,(MEM.eData.Y-MEM.T), label='Residuals')
+    ax3.plot(myMEM.eData.X,(myMEM.eData.Y-myMEM.T), label='Residuals')
     ax3.legend()
     plt.show()
             
+
+
+
         
 # проверка
 
-X=np.arange(0,25,0.25)
-R=[1,3,4,3,1]
-T=GetTheory(eData(X,[],R),tData([1],[5],ExpDecay))
 
-p,a= InitDistribution(0.25, 15, 40, prms_type='log') 
 
-Y=T+np.random.normal(0, 0.02, len(T))
+#X=np.arange(0,25,0.25)
+#R=[1,3,4,3,1]
+#T=GetTheory(eData(X,[],R),tData([1],[5],ExpDecay))
 
-MEM=MaxEntropy(eData(X,Y,R),tData(p,a,ExpDecay),0)
+#p,a= InitDistribution(0.25, 15, 40, prms_type='log') 
+
+#Y=T+np.random.normal(0, 0.02, len(T))
+
+# MEM=MaxEntropy(eData(X,Y,R),tData(p,a,ExpDecay),2)
