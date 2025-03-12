@@ -56,6 +56,8 @@ def InitDistribution(prm_start, prm_end, prm_number, prms_type='uniform'):
         
     p=np.ones(prm_number)/prm_number
     return p,a
+def GetResponse(X, TimeStep, Rwidth, rtype='parabola'):
+    return np.array(1-(X[:int(Rwidth/TimeStep+1)]-Rwidth/2)**2/(Rwidth/2)**2)   
 
 # экспериментальные данные
 class eData:
@@ -124,9 +126,13 @@ class MaxEntropy:
     @property
     def p(self): return self.u[:self.tData.N]
     @p.setter
-    def p(self,p):
-        self.u[:self.tData.N]=p
-        eData.p=p
+    def p(self,pp):
+        for j in range(len(pp)):
+            if pp[j] <= 0:
+                self.u[j]/=10
+            else:
+                self.u[j]=pp[j]
+        eData.p=self.p
     @property
     def lagr(self): return self.u[len(self.u)-1]
     @lagr.setter
@@ -166,7 +172,7 @@ class MaxEntropy:
     def UpdateChange(self,ddp,ddl):
         self.p+=ddp
         self.lagr+=ddl
-        self.T=GetTheory(self.eData,self.tData)
+        self.T=GetTheory(eData(self.X,self.Y,self.eData.R),tData(self.p,self.tData.a,self.tData.kernel))
         for Name in self.Vals.keys():
             self.Vals[Name]=GetValue(Name,self.X, self.Y, self.T, self.p, self.tData.a, self.tData.kernel)
             self.Grads[Name]=GetGradient(Name,self.X, self.Y, self.T, self.p, self.tData.a, self.tData.kernel)
@@ -251,7 +257,7 @@ class MaxEntropy:
         dT=GetTheory(self.eData,tData(self.dp,self.tData.a,self.tData.kernel))
         grat=1-(np.sqrt(5.)-1)/2
         r=[0.,grat,1-grat,1.]
-        def Func(k): return self.GetTotalValue(Y,self.T+k*dT,self.p+k*self.dp,lagr)
+        def Func(k): return self.GetTotalValue(self.Y,self.T+k*dT,self.p+k*self.dp,lagr)
         f1=Func(r[1])
         f2=Func(r[2])
         while abs(r[3]-r[0])>0.05:

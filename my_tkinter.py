@@ -8,14 +8,21 @@ import MaxEntPy as MEM
 #from statsmodels.tsa.stattools import acf
 
 # === Обработка нажатий кнопок ======
-global myMEM
+
 def ClickedReset():
     for Name in list(memData.keys()): memData[Name]=memVar[Name].get()
     for Name in list(memData.keys()): memVar[Name].set(memData[Name])
 
-    p,a = MEM.InitDistribution(memData['Start'],memData['End'],memData['Point number'], prms_type='log')
+    global myMEM
+    global settingsData
+    global expData
     
-    myMEM=MEM.MaxEntropy(MEM.eData(Kinetics.X,Kinetics.Y,Kinetics.R),MEM.tData(p,a,MEM.ExpDecay),memData['lagrange'])
+    p,a = MEM.InitDistribution(memData['Start'],memData['End'],memData['Point number'], prms_type='log')
+    settingsData.p=p
+    settingsData.a=a
+    myMEM=MEM.MaxEntropy(expData,settingsData,memData['lagrange'])
+
+                         #MEM.eData(Kinetics.X,Kinetics.Y,Kinetics.R),MEM.tData(p,a,MEM.ExpDecay),memData['lagrange'])
     Status['Analisys']=True
     PlotData()
     
@@ -26,13 +33,21 @@ def quitclicked():
 def SimulateClicked():
     ApplyVarToData()
     ApplyDataToVar()
-    global Kinetics
-    Kinetics=Kin.TKinetics(lstData['Point number'],lstData['Total time'])
-    Kinetics.InitY(lstData['Decay time'],1)
-    Kinetics.InitR(lstData['Pulse width'])
-    Kinetics.Convolve(Kinetics.R)
-    Kinetics.InitNoise(lstData['Noise'])
-    Kinetics.Y*=1+Kinetics.SD
+#    global Kinetics
+
+    expData.X=np.arange(0,lstData['Total time'], lstData['Total time']/lstData['Point number'])
+    simulationData.a=[lstData['Decay time']]
+    simulationData.p=[1.]
+    expData.R=MEM.GetResponse(expData.X,lstData['Total time']/lstData['Point number'],lstData['Pulse width'])
+    expData.Y=MEM.GetTheory(expData,simulationData)
+    expData.Y+=np.random.normal(0, lstData['Noise'], len(expData.X))                     
+        
+#    Kinetics=Kin.TKinetics(lstData['Point number'],lstData['Total time'])
+#    Kinetics.InitY(lstData['Decay time'],1)
+#    Kinetics.InitR(lstData['Pulse width'])
+#    Kinetics.Convolve(Kinetics.R)
+#    Kinetics.InitNoise(lstData['Noise'])
+#    Kinetics.Y*=1+Kinetics.SD
     Status['Simulated']=True
     Status['Analisys']=False
     PlotData()
@@ -46,22 +61,25 @@ def PlotData():
         axd[Name].title.set_size(10)
         match Name:
             case 'Kinetics':
-                axd[Name].plot(Kinetics.X,Kinetics.Y,label='Kinetics')
-                axd[Name].plot(Kinetics.X[:len(Kinetics.R)],Kinetics.R,label='Impulse')
+                axd[Name].plot(expData.X,expData.Y,label='Kinetics')
+                axd[Name].plot(expData.X[:len(expData.R)],expData.R,label='Impulse')
                 if Status['Analisys']:
                     axd[Name].plot(myMEM.X,myMEM.T,label='Theory')
                 axd[Name].legend()
             case 'Residuals':
-                axd[Name].plot(Kinetics.X,Kinetics.SD, label='Residuals')
+                if Status['Analisys']:
+                    axd[Name].plot(expData.X,expData.Y-myMEM.T, label='Residuals')
+ #               else:
+ #                   axd[Name].plot(expData.X,Kinetics.SD, label='Residuals')
 #                axd[Name].legend()
-            case 'Autocorrelation':
-                axd[Name].plot(Kinetics.X,Kin.AutoCorrelation(Kinetics.SD), label='Autocorrelation')
+#            case 'Autocorrelation':
+#                axd[Name].plot(expData.X,Kin.AutoCorrelation(Kinetics.SD), label='Autocorrelation')
 #                axd[Name].legend()
-            case 'Histogram':
-                axd[Name].hist(Kinetics.SD, bins=10)
+#            case 'Histogram':
+#                axd[Name].hist(Kinetics.SD, bins=10)
             case 'Distribution':
                 if Status['Analisys']:                
-                    axd['Distribution'].plot(myMEM.tData.a,myMEM.p,'.')
+                    axd['Distribution'].plot(myMEM.tData.a,myMEM.p, linestyle='none')
                     axd['Distribution'].semilogx(myMEM.tData.a, myMEM.p)
 
 
@@ -69,7 +87,10 @@ def PlotData():
 
 
 def ClickedStepOver():
-    return 0
+    myMEM.StepOver()
+    k,f = myMEM.MyGolden(myMEM.lagr)
+    myMEM.UpdateChange(myMEM.dp*k,myMEM.dlagr)
+    PlotData()
 
     
 def ApplyDataToVar():
@@ -138,16 +159,35 @@ btnStepOver.grid(column=1,row=6)
 
 fig, axd = plt.subplot_mosaic([['Kinetics','Kinetics'],
                               ['Residuals','Residuals'],
-                              ['Autocorrelation','Histogram'],
-                              ['Distrubution','Distrubution']],
+#                              ['Autocorrelation','Histogram'],
+                              ['Distribution','Distribution']],
                              figsize=(6,6),
-                             height_ratios=[2,1,1,2],
-                             width_ratios=[2,1],
+                             height_ratios=[2,1,2],
+#                             width_ratios=[2,1],
                               layout='constrained',
                             # tight_layout=True,
                             label='Fluorescece kinetics')
 
+
+#fig, axd = plt.subplot_mosaic([['Kinetics','Kinetics'],
+#                              ['Residuals','Residuals'],
+#                              ['Autocorrelation','Histogram'],
+#                              ['Distribution','Distribution']],
+#                             figsize=(6,6),
+#                             height_ratios=[2,1,1,2],
+#                             width_ratios=[2,1],
+#                              layout='constrained',
+                            # tight_layout=True,
+#                            label='Fluorescece kinetics')
+
 Status={'Simulated':False,'Analisys':False}
+
+# == вводим пустые переменные
+
+expData=MEM.eData()  # экспериментаьны данные
+simulationData=MEM.tData(kernel=MEM.ExpDecay) #  данны едля симуляции кинетики
+settingsData=MEM.tData(kernel=MEM.ExpDecay) # ===данные настроек для MEM
+myMEM=MEM.MaxEntropy(expData,simulationData,0) 
 
 window.mainloop()
 
