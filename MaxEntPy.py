@@ -13,40 +13,22 @@ def Cronecker(x,a):
     if x==a: return 1.
     else: return 0.
 
-
-def GetValue(Name,xdata=[],ydata=[], tdata=[], pdata=[], adata=[], kernel=[]):
-    val=0.
-    match Name:
-        case 'Chi2': val=np.sum(np.square(ydata-tdata))/len(ydata)
-        case 'Scilling': val=np.sum(np.array(pdata-pdata*np.log(abs(pdata))))
-    return val
-
-def GetGradient(Name,xdata=[],ydata=[], tdata=[], pdata=[], adata=[], kernel=Cronecker):
-    Grad=np.zeros(len(pdata))
-    match Name:
-        case 'Chi2':
-            for j in range(len(Grad)):
-                for i in range(len(ydata)):
-                    Grad[j]+=-2/len(ydata)*(ydata[i]-tdata[i])*kernel(xdata[i],adata[j])
-        case 'Scilling':
-            Grad=np.array(-np.log(abs(pdata))) 
-    return Grad
-
-def GetHessian(Name, xdata=[],ydata=[], tdata=[], pdata=[], adata=[], kernel=Cronecker):
-    match Name:
-        case 'Chi2':
-            Hess=np.zeros(shape=(len(pdata),len(pdata)))
-            for j1 in range(len(pdata)):
-                for j2 in range(j1,len(pdata)):
-                    for i in range(len(xdata)):
-                        Hess[j1,j2]+=2/len(xdata)*kernel(xdata[i],adata[j1])*kernel(xdata[i],adata[j2])
-                        Hess[j2,j1]=Hess[j1,j2]   
-        case 'Scilling': Hess=np.array(-1/pdata)
-    return Hess
-            
+           
     
-def EstimateDisp(Y): # оценка дисперсии, SD**2, из экспериментальных данных
-    return sum(np.square(Y[1:]-Y[:len(Y)-1]))/(2*(len(Y)-1))
+def EstimateDisp(Y, n=1, mode='single', selected=[]): # оценка дисперсии, SD**2, из экспериментальных данных
+    if len(Y)<=1: return 0
+    r=list(range(len(Y)))
+    dd=0.
+    match mode:
+        case 'single':
+            return sum(np.square(Y[r[n:]+r[:n]]-Y))/(2*(len(Y)))
+        case 'selected':
+            for i in selected:
+                dd+=sum(np.square(Y[r[i:]+r[:i]]-Y))/(2*(len(Y)))
+            return dd/len(selected)       
+        case 'full':          
+            for i in r[1:]: dd+=sum(np.square(Y[r[i:]+r[:i]]-Y))/(2*(len(Y)))
+            return dd/(len(r)-1)
 
 
 def InitDistribution(prm_start, prm_end, prm_number, prms_type='uniform'):
@@ -96,28 +78,34 @@ class MaxEntropy:
         self.T=GetTheory(self.eData,self.tData)
         self.disp=EstimateDisp(self.eData.Y-self.T)
 
-        self.Vals={'Chi2':0.,'Scilling':0.}
+        self.Vals={'Chi2':0.,'Scilling':0.,'Total':0.}
         self.Grads=self.Vals.copy()
         self.Hesses=self.Vals.copy()
-        for Name in self.Vals.keys():
-            self.Vals[Name]=GetValue(Name,self.X, self.Y, self.T, self.p, self.tData.a, self.tData.kernel)
-            self.Grads[Name]=GetGradient(Name,self.X, self.Y, self.T, self.p, self.tData.a, self.tData.kernel)
-            self.Hesses[Name]=GetHessian(Name,self.X, self.Y, self.T, self.p, self.tData.a, self.tData.kernel)
-
-        if lagrange==0:
-            self.lagr=2*self.Vals['Scilling']/(self.Vals['Chi2']/self.disp+self.Vals['Scilling'])
-        else: self.lagr=lagrange
+        self.listVals=self.Vals.copy()
+        for name in self.listVals.keys(): self.listVals[name]=[]
+        self.iteration=0
         
-        self.Grad=np.zeros(len(self.u))
-        self.Grad[:(len(self.Grad)-1)]=-self.Grads['Scilling']+self.lagr*self.Grads['Chi2']/self.disp
-        self.Grad[len(self.Grad)-1]=self.Vals['Chi2']/self.disp-1
+        self.iH=np.arange(len(self.u))
+
+#        for Name in self.Vals.keys():
+#            self.Vals[Name]=GetValue(Name,self.X, self.Y, self.T, self.p, self.tData.a, self.tData.kernel)
+#            self.Grads[Name]=GetGradient(Name,self.X, self.Y, self.T, self.p, self.tData.a, self.tData.kernel)
+#            self.Hesses[Name]=GetHessian(Name,self.X, self.Y, self.T, self.p, self.tData.a, self.tData.kernel)#
+#
+#        if lagrange==0:
+#            self.lagr=2*self.Vals['Scilling']/(self.Vals['Chi2']/self.disp+self.Vals['Scilling'])
+#        else: self.lagr=lagrange
+        
+#        self.Grad=np.zeros(len(self.u))
+#        self.Grad[:(len(self.Grad)-1)]=-self.Grads['Scilling']+self.lagr*self.Grads['Chi2']/self.disp
+#        self.Grad[len(self.Grad)-1]=self.Vals['Chi2']/self.disp-1
 
         self.Hessian=np.zeros(shape=(len(self.u),len(self.u)))
-        self.Hessian[:(len(self.u)-1),:(len(self.u)-1)]=self.lagr*self.Hesses['Chi2']/self.disp
-        for j in range(len(self.u)-1):
-            self.Hessian[j,j]-=self.Hesses['Scilling'][j]
-            self.Hessian[j,len(self.u)-1]=self.Grads['Chi2'][j]/self.disp
-            self.Hessian[len(self.u)-1,j]=self.Hessian[j,len(self.u)-1]
+#        self.Hessian[:(len(self.u)-1),:(len(self.u)-1)]=self.lagr*self.Hesses['Chi2']/self.disp
+#        for j in range(len(self.u)-1):
+#            self.Hessian[j,j]-=self.Hesses['Scilling'][j]
+#            self.Hessian[j,len(self.u)-1]=self.Grads['Chi2'][j]/self.disp
+#            self.Hessian[len(self.u)-1,j]=self.Hessian[j,len(self.u)-1]
 
 #        self.fig2, self.axd2 =plt.subplot_mosaic([['Kinetics'],['Residuals'],['Distribution']],
 #                                            figsize=(6,6), height_ratios=[2,1,2],
@@ -152,56 +140,121 @@ class MaxEntropy:
     @property
     def Y(self): return self.eData.Y
     
-    def GetTotalValue(self, Y=[], T=[], P=[],lagrange=0):
-        if len(Y)==0: Y=self.Y
-        if len(T)==0: T=self.T
-        if len(P)==0: P=self.p
-        if lagrange==0: lagrange=self.lagr
-        return -GetValue('Scilling', pdata=P)+lagrange*(GetValue('Chi2',ydata=Y, tdata=T, pdata=P)/self.disp-1)
-        
-    def UpdateAll(self):
-        self.T=GetTheory(self.eData,self.tData)
-        self.Res=self.eData.Y-self.T
-        self.disp=EstimateDisp(self.eData.Y-self.T)
-        for Name in self.Vals.keys():
-            self.Vals[Name]=GetValue(Name,self.eData.X, self.eData.Y, self.T, self.p, self.tData.a, self.tData.kernel)
-            self.Grads[Name]=GetGradient(Name,self.eData.X, self.eData.Y, self.T, self.p, self.tData.a, self.tData.kernel)
-        self.Grad[:(len(self.Grad)-1)]=-self.Grads['Scilling']+self.lagr*self.Grads['Chi2']/self.disp
-        self.Grad[len(self.Grad)-1]=self.Vals['Chi2']/self.disp-1
+    def GetVals(self,p,l, theory=[]):  # значение фуекционалов при заданных p, a, lagrange
+        vals=self.Vals.copy()
+        if len(theory)==0:
+            T=np.transpose(self.C) @ p
+        else:
+            T=theory
+        vals['Chi2']=np.sum(np.square(self.Y-T))/(len(self.Y)*self.disp)
+        vals['Scilling']=np.sum(p-p*np.log(p))
+        vals['Total']=-vals['Scilling']+l*vals['Chi2']
+        return vals
 
-    def UpdateChange(self,ddp,ddl):
-        self.p+=ddp
-        self.lagr+=ddl
-        self.T=GetTheory(eData(self.X,self.Y,self.eData.R),tData(self.p,self.tData.a,self.tData.kernel))
-        for Name in self.Vals.keys():
-            self.Vals[Name]=GetValue(Name,self.X, self.Y, self.T, self.p, self.tData.a, self.tData.kernel)
-            self.Grads[Name]=GetGradient(Name,self.X, self.Y, self.T, self.p, self.tData.a, self.tData.kernel)
+    def GetGrads(self,p,lamda, theory=[]):
+        grads=self.Grads.copy()
+        if len(theory)==0:
+            T=np.transpose(self.C) @ p
+        else:
+            T=theory
+        grads['Chi2']=-2/(len(self.X)*self.disp)*(self.B-self.A @ p)
+        grads['Scilling']=-np.log(p)
+        grads['Total']=np.zeros(len(self.u))        
+        grads['Total'][:len(p)]=-grads['Scilling']+lamda*grads['Chi2']
+        grads['Total'][len(p)]=self.Vals['Chi2']-1               
+        return grads
 
-        self.Grad[:(len(self.Grad)-1)]=-self.Grads['Scilling']+self.lagr*self.Grads['Chi2']/self.disp
-        self.Grad[len(self.Grad)-1]=self.Vals['Chi2']/self.disp-1
-        
-        self.Hesses['Scilling']=GetHessian('Scilling',self.eData.X, self.eData.Y, self.T, self.p, self.tData.a, self.tData.kernel)
+    def GetHessian(self,p,lamda, mode ='reset'):     
+        if mode=='reset':
+            self.Hessian=np.zeros(shape=(len(self.u),len(self.u)))
+
+        self.Hessian[:len(p),:len(p)]=2*lamda/(len(self.X)*self.disp)*self.A
+        self.Hesses['Scilling']=-np.array(1/p)
+        iDiag=np.diag_indices_from(self.A)
+        self.Hessian[iDiag]-=self.Hesses['Scilling']
+        #2*lamda/(len(self.X)*self.disp)*self.A[iDiag]-self.Hesses['Scilling']
+
+        self.Hessian[len(p),:len(p)]=self.Grads['Chi2']
         for j in range(len(self.p)):
-            self.Hessian[j,j]=-self.Hesses['Scilling'][j]+self.lagr*self.Hesses['Chi2'][j,j]
-            self.Hessian[j,len(self.u)-1]=self.Grads['Chi2'][j]/self.disp
-            self.Hessian[len(self.u)-1,j]=self.Hessian[j,len(self.u)-1]
-             
+#            self.Hessian[j,j]-=self.Hesses['Scilling'][j]
+            self.Hessian[j,len(self.p)]=self.Hessian[len(self.p),j]
+ 
+        
+    def Reset(self, eData,tData,lagrange):
+        self.eData=eData
+        self.tData=tData
+        self.u=np.zeros(len(tData.p)+1)
+        self.du=self.u.copy()
+        self.p=tData.p
+        self.lagr=lagrange
+        self.iW=np.arange(len(self.u))      # индексы в рабочем диапазоне
+        self.iH=self.iW.copy()
+        self.iteration=0
+        
+        for name in self.listVals.keys(): self.listVals[name].clear()
+                
+        self.C=np.zeros(shape=(len(self.p),len(self.eData.X)))  # матрица функций
+        self.A=np.zeros(shape=(len(self.p),len(self.p)))     # характериситческая матрица
+        for j in range(len(self.p)):
+            self.C[j]=np.array(self.tData.kernel(self.eData.X,self.tData.a[j]))
+            if sum(self.eData.R)>0:
+                self.C[j]=np.convolve(self.C[j],self.eData.R)[:len(self.X)]/sum(self.eData.R)            
+        self.A=self.C @ np.transpose(self.C)
+        self.B=self.C @ self.eData.Y
+        self.T=np.transpose(self.C) @ self.p
+        self.Res=self.Y-self.T
+        self.disp=EstimateDisp(self.Res)
+
+        self.Vals=self.GetVals(self.p,self.lagr,self.T)
+        self.Grads=self.GetGrads(self.p,self.lagr,self.T)
+        
+        
+        self.GetHessian(self.p,self.lagr)
+
+        
+    def Update(self,tData,lagrange):
+        self.tData=tData
+        self.p=tData.p
+        self.lagr=lagrange
+        self.iteration+=1
+        
+        self.T=np.transpose(self.C) @ self.p
+        self.Res=self.Y-self.T
+        if self.iteration==5: self.disp=min(EstimateDisp(self.Res),self.disp)        
+        
+        self.Vals=self.GetVals(self.p,self.lagr,self.T)
+        self.Grads=self.GetGrads(self.p,self.lagr,self.T)
+        for name in self.listVals.keys(): self.listVals[name].append(self.Vals[name])
+
+        self.GetHessian(self.p,self.lagr,'')
+           
             
     def StepOver(self):
-        self.du=lg.solve(self.Hessian,-self.Grad,assume_a='sym')
+
+        iZ=np.where(self.p<max(self.p)/10e7)[0] #  индекы где р очень мало, для приближенного решения и избегания сингулярности
+        iW=np.delete(self.iH, iZ)               #  другая часть индексов, для точного решения
+        self.iW=iW
+        self.du[iW]=lg.solve(self.Hessian[iW,:][:,iW],-self.Grads['Total'][iW],assume_a='sym')
+
+        iZdiag=np.diag_indices_from(self.Hessian)
+        self.du[iZ]=-self.Grads['Total'][iZ]/self.Hessian[iZdiag][iZ]
+#        self.du=lg.solve(self.Hessian,-self.Grads['Total'],assume_a='sym')
+
+        mp=min(self.dp/self.p)
+        if mp<-1:self.dp/=-mp
 
     def ShowChange(self,dp):
         self.T=GetTheory(self.eData,tData(self.p+dp,self.tData.a,ExpDecay))
-        res=Y-self.T
+        res=self.Y-self.T
         sd=np.std(res)
         fig, (ax1,ax2,ax3)=plt.subplots(3,1)
-        ax1.plot(X,Y, label='Experiment')
-        ax1.plot(X,self.T, label='Theory')
+        ax1.plot(self.X,self.Y, label='Experiment')
+        ax1.plot(self.X,self.T, label='Theory')
         ax1.legend()
-        ax2.plot(self.tData.a, self.p+dp,'.', label='Distribution')
+        ax2.plot(self.tData.a, self.Add_dp(self.p,self.dp),'.', label='Distribution')
         ax2.set_xscale('log')
         ax2.legend()
-        ax3.plot(X,res, label=f'Residuals ({round(sd,4)})')
+        ax3.plot(self.X,res, label=f'Residuals ({round(sd,4)})')
         ax3.legend()
         plt.show()
 
@@ -220,65 +273,74 @@ class MaxEntropy:
             self.axd2[Name].legend()
         plt.show()
                     
-
-
-#        self.ax1.clear()
-#        self.ax2.clear()
-#        self.ax3.clear()
-        
-#        self.ax1.plot(self.X,self.Y,label='Experiment')
-#        self.ax1.plot(self.X,self.T, label='Theory')
-#        self.ax1.legend()
-#        self.ax2.plot(self.tData.a, self.p,'.', label='Distribution')
-#        self.ax2.set_xscale('log')
-#        self.ax2.legend()
-#        self.ax3.plot(self.X,(self.Y-self.T), label='Residuals')
-#        self.ax3.legend()
-#        plt.show()
-        
-    def ShowAnalisys(self,n):
+    def ShowAnalisys(self,n,lamda):
         chi2=np.zeros(n)
         sci=chi2.copy()
         total=chi2.copy()
         for i in range(n):
-            pp=self.p+self.dp*i/10
-            ll=self.lagr+self.dlagr*i/10
-            t=GetTheory(self.eData,tData(pp,self.tData.a,ExpDecay))
-            chi2[i]=GetValue('Chi2',X,Y,t,pp,self.tData.a,ExpDecay)/self.disp
-            sci[i]=GetValue('Scilling',X,Y,t,pp,self.tData.a,ExpDecay)
-            total[i]=-sci[i]+ll*(chi2[i]-1)
+            pp=self.Add_dp(self.p,self.dp*i/10)
+            #ll=self.lagr+self.dlagr*i/10
+            vals=self.GetVals(pp,lamda)
+            #t=GetTheory(self.eData,tData(pp,self.tData.a,ExpDecay))
+            chi2[i]=vals['Chi2'] #GetValue('Chi2',X,Y,t,pp,self.tData.a,ExpDecay)/self.disp
+            sci[i]=vals['Scilling'] #GetValue('Scilling',X,Y,t,pp,self.tData.a,ExpDecay)
+            total[i]=vals['Total'] #-sci[i]+ll*(chi2[i]-1)
         plt.plot(chi2, label='Chi2')
         plt.plot(sci, label='Scilling')
         plt.plot(total, label='Total')
         plt.legend()
         plt.show()
         
-    def MyGolden(self,lagr):
-        dT=GetTheory(self.eData,tData(self.dp,self.tData.a,self.tData.kernel))
+    def MyGolden(self):
+#        dT=GetTheory(self.eData,tData(self.dp,self.tData.a,self.tData.kernel))
         grat=1-(np.sqrt(5.)-1)/2
         r=[0.,grat,1-grat,1.]
-        def Func(k): return self.GetTotalValue(self.Y,self.T+k*dT,self.p+k*self.dp,lagr)
-        f1=Func(r[1])
-        f2=Func(r[2])
+#        lamda=self.lagr
+        def Func(k):
+            vals=self.GetVals(self.p+k*self.dp,self.lagr)
+            grads=self.GetGrads(self.p+k*self.dp,self.lagr)
+            lamda=sum(grads['Scilling'])/sum(grads['Chi2'])
+            return -vals['Scilling']+lamda*vals['Chi2']
+        f1=self.GetVals(self.Add_dp(self.p,r[1]*self.dp),self.lagr+self.dlagr)['Total']
+        f2=self.GetVals(self.Add_dp(self.p,r[2]*self.dp),self.lagr+self.dlagr)['Total']
+#        f1=Func(r[1])
+#        f2=Func(r[2])
         while abs(r[3]-r[0])>0.05:
             if f1<f2:
                 r[3]=r[2]
                 r[2]=r[1]
                 f2=f1
                 r[1]=r[0]+grat*(r[3]-r[0])
-                f1=Func(r[1])
+                f1=self.GetVals(self.Add_dp(self.p,r[1]*self.dp),self.lagr+self.dlagr)['Total']
+                #f1=Func(r[1])
             else:
                 r[0]=r[1]
                 r[1]=r[2]
                 f1=f2
                 r[2]=r[3]-(r[3]-r[0])*grat
-                f2=Func(r[2])
+                f2 = self.GetVals(self.Add_dp(self.p,r[2]*self.dp),self.lagr+self.dlagr)['Total']
+                #f2=Func(r[2])
         return (r[0]+r[3])/2, min(f1,f2)
+    def StepTune(self):
+        h=np.zeros(shape=(2,2))
+        v=np.zeros(2)
+        h[0,0]=self.p @ self.Hessian[:len(self.p),:len(self.p)] @ self.p 
+        h[1,0]=self.Grads['Chi2'] @ self.p
+        h[0,1]=h[1,0]
+        v[0]= self.Grads['Total'][:len(self.p)] @ self.p
+        v[1]= self.Vals['Chi2']-1
+        return lg.solve(h,-v,assume_a='sym')
+
+        
     def Add_dp(self,p,dp):
+        pp=p+dp
         for j in range(len(p)):
-            if dp[j] <= -p[j]: p[j]=p[j]/10
-            else: p[j]+=dp[j]
-        return p
+            if pp[j] <= 0: pp[j]=p[j]/10
+        return pp
+    def ShowVals(self):
+        for name in self.listVals.keys(): plt.plot(self.listVals[name], label=name)
+        plt.legend()
+        plt.show()
         
 def PlotData(myMEM):
     fig, (ax1,ax2,ax3)=plt.subplots(3,1)

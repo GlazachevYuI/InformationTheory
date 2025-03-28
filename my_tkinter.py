@@ -14,16 +14,18 @@ def ClickedReset():
     for Name in list(memData.keys()): memVar[Name].set(memData[Name])
 
     global myMEM
-    global settingsData
+    global setData
     global expData
+    global iteration
     
     p,a = MEM.InitDistribution(memData['Start'],memData['End'],memData['Point number'], prms_type='log')
-    settingsData.p=p
-    settingsData.a=a
-    myMEM=MEM.MaxEntropy(expData,settingsData,memData['lagrange'])
-
-                         #MEM.eData(Kinetics.X,Kinetics.Y,Kinetics.R),MEM.tData(p,a,MEM.ExpDecay),memData['lagrange'])
+    setData.p=p
+    setData.a=a
+#    setData.p=np.ones(len(p))*sum(expData.Y)*lstData['Total time']/lstData['Point number']/sum(a)
+    myMEM.Reset(expData,setData,memData['lagrange'])
+    iteration=0
     Status['Analisys']=True
+    print(myMEM.Vals)
     PlotData()
     
 def quitclicked():
@@ -36,20 +38,15 @@ def SimulateClicked():
 #    global Kinetics
 
     expData.X=np.arange(0,lstData['Total time'], lstData['Total time']/lstData['Point number'])
-    simulationData.a=[lstData['Decay time']]
-    simulationData.p=[1.]
+    simData.a=[lstData['Decay time']]
+    simData.p=[1.]
     expData.R=MEM.GetResponse(expData.X,lstData['Total time']/lstData['Point number'],lstData['Pulse width'])
-    expData.Y=MEM.GetTheory(expData,simulationData)
+    expData.Y=MEM.GetTheory(expData,simData)
     expData.Y+=np.random.normal(0, lstData['Noise'], len(expData.X))                     
-        
-#    Kinetics=Kin.TKinetics(lstData['Point number'],lstData['Total time'])
-#    Kinetics.InitY(lstData['Decay time'],1)
-#    Kinetics.InitR(lstData['Pulse width'])
-#    Kinetics.Convolve(Kinetics.R)
-#    Kinetics.InitNoise(lstData['Noise'])
-#    Kinetics.Y*=1+Kinetics.SD
+
     Status['Simulated']=True
     Status['Analisys']=False
+
     PlotData()
         
 def PlotData():
@@ -87,9 +84,24 @@ def PlotData():
 
 
 def ClickedStepOver():
+
+    global myMEM
+    global iteration
+    
     myMEM.StepOver()
-    k,f = myMEM.MyGolden(myMEM.lagr)
-    myMEM.UpdateChange(myMEM.dp*k,myMEM.dlagr)
+    k,f = myMEM.MyGolden()
+    myMEM.p=myMEM.p+k*myMEM.dp
+    #myMEM.lagr=sum(myMEM.Grads['Scilling'])/sum(myMEM.Grads['Chi2'])   #*(1+2**(-iteration))
+#    if myMEM.Vals['Chi2']>1.1:
+    myMEM.lagr+=myMEM.dlagr
+    setData.p=myMEM.p
+    myMEM.Update(setData,myMEM.lagr)
+    print(myMEM.iteration,': ', end='')
+    for name in myMEM.Vals.keys():
+        print(' ',name,round(myMEM.Vals[name],4), end='')
+    print(f'  lagr: {round(myMEM.lagr,4)}, dlafr: {round(myMEM.dlagr,4) }, Golden: {round(k,4)},{round(f,4)}')
+    #print()
+    #print(myMEM.Vals)
     PlotData()
 
     
@@ -117,8 +129,8 @@ for Name in Pages.keys():
 
 
 # =========== страница симуляции кинетик =========================
-lstData={'Total time':100.0, 'Point number':200, 'Decay time':20.0,
-         'Pulse width':2.,'Noise':0.05}
+lstData={'Total time':100.0, 'Point number':200, 'Decay time':10.0,
+         'Pulse width':2.,'Noise':0.04}
 lstVar={'Total time':DoubleVar(), 'Point number':IntVar(), 'Decay time':DoubleVar(),
          'Pulse width':DoubleVar(),'Noise':DoubleVar()}
 
@@ -138,7 +150,7 @@ btnQ=ttk.Button(Pages['Simulation'],text="Quit",command=quitclicked)
 btnQ.grid(column=1, row=6)
 
 #================ Страница Макс этропии анализа ===================
-memData={'Start':0.25,'End':100,'Point number':50,'lagrange':1.}
+memData={'Start':0.5,'End':100,'Point number':100,'lagrange':1.}
 memVar={'Start':DoubleVar(),'End':DoubleVar(),'Point number':IntVar(),'lagrange':DoubleVar()}
 rw=1
 for Name in list(memData.keys()):
@@ -183,11 +195,11 @@ fig, axd = plt.subplot_mosaic([['Kinetics','Kinetics'],
 Status={'Simulated':False,'Analisys':False}
 
 # == вводим пустые переменные
-
+iteration=0
 expData=MEM.eData()  # экспериментаьны данные
-simulationData=MEM.tData(kernel=MEM.ExpDecay) #  данны едля симуляции кинетики
-settingsData=MEM.tData(kernel=MEM.ExpDecay) # ===данные настроек для MEM
-myMEM=MEM.MaxEntropy(expData,simulationData,0) 
+simData=MEM.tData(kernel=MEM.ExpDecay) #  данны едля симуляции кинетики
+setData=MEM.tData(kernel=MEM.ExpDecay) # ===данные настроек для MEM
+myMEM=MEM.MaxEntropy(expData,simData,0) 
 
 window.mainloop()
 
