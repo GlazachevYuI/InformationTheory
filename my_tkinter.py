@@ -48,6 +48,10 @@ def SimulateClicked():
     Status['Analisys']=False
 
     PlotData()
+
+def ClickedShowVals():
+    myMEM.ShowVals()
+
         
 def PlotData():
 
@@ -89,19 +93,28 @@ def ClickedStepOver():
     global iteration
     
     myMEM.StepOver()
-    k,f = myMEM.MyGolden()
+    k,f = myMEM.MyGolden(name='Chi2')
+    k2,l2=myMEM.StepTune()
+
+    print(myMEM.iteration,': ', end='')
+    for name in myMEM.Vals.keys():
+        print(name,':',round(myMEM.Vals[name],4), end=' ')
+    print(f'  lagr: {round(myMEM.lagr,4)}, dlagr: {round(myMEM.dlagr,4) }, Golden: {round(k,4)}', end='')
+    print(f' Tune: {round(k2,4)},{round(l2,4)}')
+
     myMEM.p=myMEM.p+k*myMEM.dp
+#    vals=myMEM.GetVals(myMEM.p,myMEM.lagr)
+#    if vals['Total']>f: myMEM.lagr+=myMEM.dlagr   
+
     #myMEM.lagr=sum(myMEM.Grads['Scilling'])/sum(myMEM.Grads['Chi2'])   #*(1+2**(-iteration))
 #    if myMEM.Vals['Chi2']>1.1:
+    #myMEM.lagr+=k*myMEM.dlagr
+
     myMEM.lagr+=myMEM.dlagr
     setData.p=myMEM.p
     myMEM.Update(setData,myMEM.lagr)
-    print(myMEM.iteration,': ', end='')
-    for name in myMEM.Vals.keys():
-        print(' ',name,round(myMEM.Vals[name],4), end='')
-    print(f'  lagr: {round(myMEM.lagr,4)}, dlafr: {round(myMEM.dlagr,4) }, Golden: {round(k,4)},{round(f,4)}')
-    #print()
-    #print(myMEM.Vals)
+
+
     PlotData()
 
     
@@ -166,6 +179,10 @@ btnInit.grid(column=0,row=6)
 
 btnStepOver=ttk.Button(Pages['MaxEnt Analisys'],text='Stepover', command=ClickedStepOver)
 btnStepOver.grid(column=1,row=6)
+
+btnShowVals=ttk.Button(Pages['MaxEnt Analisys'],text='Show vals/grads', command=ClickedShowVals)
+btnShowVals.grid(column=2,row=6)
+
 
 # ====================== описание графиков ======================
 

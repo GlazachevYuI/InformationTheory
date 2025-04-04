@@ -12,8 +12,6 @@ def Pln(x,n): return x**n
 def Cronecker(x,a):
     if x==a: return 1.
     else: return 0.
-
-           
     
 def EstimateDisp(Y, n=1, mode='single', selected=[]): # оценка дисперсии, SD**2, из экспериментальных данных
     if len(Y)<=1: return 0
@@ -81,10 +79,14 @@ class MaxEntropy:
         self.Vals={'Chi2':0.,'Scilling':0.,'Total':0.}
         self.Grads=self.Vals.copy()
         self.Hesses=self.Vals.copy()
+
         self.listVals=self.Vals.copy()
-        for name in self.listVals.keys(): self.listVals[name]=[]
+        self.listGrads=self.Vals.copy()
+        for name in self.listVals.keys():
+            self.listVals[name]=[]
+            self.listGrads[name]=[]        
         self.iteration=0
-        
+        self.Status='Start'
         self.iH=np.arange(len(self.u))
 
 #        for Name in self.Vals.keys():
@@ -188,11 +190,16 @@ class MaxEntropy:
         self.p=tData.p
         self.lagr=lagrange
         self.iW=np.arange(len(self.u))      # индексы в рабочем диапазоне
+        self.iA=np.arange(len(self.p))      # индексы в  диапазоне A
+        
         self.iH=self.iW.copy()
         self.iteration=0
+        self.Status='Main'
         
-        for name in self.listVals.keys(): self.listVals[name].clear()
-                
+        for name in self.listVals.keys():
+            self.listVals[name].clear()
+            self.listGrads[name].clear()
+            
         self.C=np.zeros(shape=(len(self.p),len(self.eData.X)))  # матрица функций
         self.A=np.zeros(shape=(len(self.p),len(self.p)))     # характериситческая матрица
         for j in range(len(self.p)):
@@ -202,9 +209,11 @@ class MaxEntropy:
         self.A=self.C @ np.transpose(self.C)
         self.B=self.C @ self.eData.Y
         self.T=np.transpose(self.C) @ self.p
-        self.Res=self.Y-self.T
-        self.disp=EstimateDisp(self.Res)
 
+        self.Res=self.Y-self.T
+        self.disp=EstimateDisp(self.Res,mode='selected', selected=[1,2,3])
+#        self.disp=EstimateDisp(self.Res)
+        
         self.Vals=self.GetVals(self.p,self.lagr,self.T)
         self.Grads=self.GetGrads(self.p,self.lagr,self.T)
         
@@ -220,24 +229,49 @@ class MaxEntropy:
         
         self.T=np.transpose(self.C) @ self.p
         self.Res=self.Y-self.T
-        if self.iteration==5: self.disp=min(EstimateDisp(self.Res),self.disp)        
+#        if self.iteration==5: self.disp=min(EstimateDisp(self.Res,mode='full'),self.disp)
+    
         
         self.Vals=self.GetVals(self.p,self.lagr,self.T)
         self.Grads=self.GetGrads(self.p,self.lagr,self.T)
-        for name in self.listVals.keys(): self.listVals[name].append(self.Vals[name])
 
-        self.GetHessian(self.p,self.lagr,'')
-           
+            
+        lstGrads=self.Grads.copy()
+        lstGrads['Chi2']=self.Grads['Chi2'] @ self.dp
+        lstGrads['Scilling']=self.Grads['Scilling'] @ self.dp
+        lstGrads['Total']=self.Grads['Total'] @ self.du
+        
+        for name in self.listVals.keys():
+            self.listVals[name].append(self.Vals[name])
+            self.listGrads[name].append(lstGrads[name])
+
+#        if (self.Status=='Main') and (self.iteration>3):
+#            if (self.listVals['Chi2'][self.iteration-2]-self.listVals['Chi2'][self.iteration-1])<0.1:
+#                self.Status='Tune'
+            
+        self.GetHessian(self.p,self.lagr,'')          
             
     def StepOver(self):
 
-        iZ=np.where(self.p<max(self.p)/10e7)[0] #  индекы где р очень мало, для приближенного решения и избегания сингулярности
+        iZ=np.where(self.p<max(self.p)/10e7)[0] #  индексы где р очень мало, для приближенного решения и избегания сингулярности
         iW=np.delete(self.iH, iZ)               #  другая часть индексов, для точного решения
         self.iW=iW
-        self.du[iW]=lg.solve(self.Hessian[iW,:][:,iW],-self.Grads['Total'][iW],assume_a='sym')
-
         iZdiag=np.diag_indices_from(self.Hessian)
-        self.du[iZ]=-self.Grads['Total'][iZ]/self.Hessian[iZdiag][iZ]
+
+        iT=np.delete(self.iA,iZ)
+        
+        match self.Status:
+#            case 'Start':
+            case 'Main':
+                self.du[iW]=lg.solve(self.Hessian[iW,:][:,iW],-self.Grads['Total'][iW],assume_a='sym')
+                self.du[iZ]=-self.Grads['Total'][iZ]/self.Hessian[iZdiag][iZ]
+                    
+            case 'Tune':
+                self.du[iT]=lg.solve(self.Hessian[iT,:][:,iT],-self.Grads['Total'][iT],assume_a='sym')                             
+                self.du[iZ]=-self.Grads['Total'][iZ]/self.Hessian[iZdiag][iZ]
+                self.dlagr=0.
+
+        
 #        self.du=lg.solve(self.Hessian,-self.Grads['Total'],assume_a='sym')
 
         mp=min(self.dp/self.p)
@@ -291,7 +325,7 @@ class MaxEntropy:
         plt.legend()
         plt.show()
         
-    def MyGolden(self):
+    def MyGolden(self,name='Total'):
 #        dT=GetTheory(self.eData,tData(self.dp,self.tData.a,self.tData.kernel))
         grat=1-(np.sqrt(5.)-1)/2
         r=[0.,grat,1-grat,1.]
@@ -301,8 +335,8 @@ class MaxEntropy:
             grads=self.GetGrads(self.p+k*self.dp,self.lagr)
             lamda=sum(grads['Scilling'])/sum(grads['Chi2'])
             return -vals['Scilling']+lamda*vals['Chi2']
-        f1=self.GetVals(self.Add_dp(self.p,r[1]*self.dp),self.lagr+self.dlagr)['Total']
-        f2=self.GetVals(self.Add_dp(self.p,r[2]*self.dp),self.lagr+self.dlagr)['Total']
+        f1=self.GetVals(self.Add_dp(self.p,r[1]*self.dp),self.lagr+self.dlagr)[name]
+        f2=self.GetVals(self.Add_dp(self.p,r[2]*self.dp),self.lagr+self.dlagr)[name]
 #        f1=Func(r[1])
 #        f2=Func(r[2])
         while abs(r[3]-r[0])>0.05:
@@ -311,26 +345,27 @@ class MaxEntropy:
                 r[2]=r[1]
                 f2=f1
                 r[1]=r[0]+grat*(r[3]-r[0])
-                f1=self.GetVals(self.Add_dp(self.p,r[1]*self.dp),self.lagr+self.dlagr)['Total']
+                f1=self.GetVals(self.Add_dp(self.p,r[1]*self.dp),self.lagr+self.dlagr)[name]
                 #f1=Func(r[1])
             else:
                 r[0]=r[1]
                 r[1]=r[2]
                 f1=f2
                 r[2]=r[3]-(r[3]-r[0])*grat
-                f2 = self.GetVals(self.Add_dp(self.p,r[2]*self.dp),self.lagr+self.dlagr)['Total']
+                f2 = self.GetVals(self.Add_dp(self.p,r[2]*self.dp),self.lagr+self.dlagr)[name]
                 #f2=Func(r[2])
-        return (r[0]+r[3])/2, min(f1,f2)
+        return (r[0]+r[3])/2, (f1+f2)/2
     def StepTune(self):
         h=np.zeros(shape=(2,2))
         v=np.zeros(2)
-        h[0,0]=self.p @ self.Hessian[:len(self.p),:len(self.p)] @ self.p 
-        h[1,0]=self.Grads['Chi2'] @ self.p
+        h[0,0]=self.dp @ self.Hessian[:len(self.p),:len(self.p)] @ self.dp 
+        h[1,0]=self.Grads['Chi2'] @ self.dp
         h[0,1]=h[1,0]
-        v[0]= self.Grads['Total'][:len(self.p)] @ self.p
+        v[0]= self.Grads['Total'][:len(self.p)] @ self.dp
         v[1]= self.Vals['Chi2']-1
-        return lg.solve(h,-v,assume_a='sym')
-
+        return tuple(lg.solve(h,-v,assume_a='sym'))
+    def TuningDisp():
+        
         
     def Add_dp(self,p,dp):
         pp=p+dp
@@ -338,8 +373,14 @@ class MaxEntropy:
             if pp[j] <= 0: pp[j]=p[j]/10
         return pp
     def ShowVals(self):
-        for name in self.listVals.keys(): plt.plot(self.listVals[name], label=name)
-        plt.legend()
+        fig, axs = plt.subplots(2,1, figsize=(5,5), layout='constrained')
+        for name in self.listVals.keys():
+            axs[0].plot(self.listVals[name], label=name)
+            axs[1].plot(self.listGrads[name], label=name)
+        axs[0].set_title('Values')
+        axs[0].legend()
+        axs[1].set_title('Gradients')
+        axs[1].legend()
         plt.show()
         
 def PlotData(myMEM):
