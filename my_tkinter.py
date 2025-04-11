@@ -21,7 +21,10 @@ def ClickedReset():
     p,a = MEM.InitDistribution(memData['Start'],memData['End'],memData['Point number'], prms_type='log')
     setData.p=p
     setData.a=a
-#    setData.p=np.ones(len(p))*sum(expData.Y)*lstData['Total time']/lstData['Point number']/sum(a)
+    setData.p=np.ones(len(p))*sum(expData.Y)/np.sum(myMEM.C)
+
+
+    
     myMEM.Reset(expData,setData,memData['lagrange'])
     iteration=0
     Status['Analisys']=True
@@ -99,8 +102,7 @@ def ClickedStepOver():
     print(myMEM.iteration,': ', end='')
     for name in myMEM.Vals.keys():
         print(name,':',round(myMEM.Vals[name],4), end=' ')
-    print(f'  lagr: {round(myMEM.lagr,4)}, dlagr: {round(myMEM.dlagr,4) }, Golden: {round(k,4)}', end='')
-    print(f' Tune: {round(k2,4)},{round(l2,4)}')
+    print(f'  lagr: {round(myMEM.lagr,4)}, dlagr: {round(myMEM.dlagr,4) }, Golden: {round(k,4)}')
 
     myMEM.p=myMEM.p+k*myMEM.dp
 #    vals=myMEM.GetVals(myMEM.p,myMEM.lagr)

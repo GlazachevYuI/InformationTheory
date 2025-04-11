@@ -19,10 +19,10 @@ def EstimateDisp(Y, n=1, mode='single', selected=[]): # оценка диспе�
     dd=0.
     match mode:
         case 'single':
-            return sum(np.square(Y[r[n:]+r[:n]]-Y))/(2*(len(Y)))
+            return sum(np.square(Y[n:]-Y[:(len(Y)-n)]))/(2*(len(Y)-n))
         case 'selected':
             for i in selected:
-                dd+=sum(np.square(Y[r[i:]+r[:i]]-Y))/(2*(len(Y)))
+                dd+=sum(np.square(Y[i:]-Y[:(len(Y)-i)]))/(2*(len(Y)-i))
             return dd/len(selected)       
         case 'full':          
             for i in r[1:]: dd+=sum(np.square(Y[r[i:]+r[:i]]-Y))/(2*(len(Y)))
@@ -76,6 +76,8 @@ class MaxEntropy:
         self.T=GetTheory(self.eData,self.tData)
         self.disp=EstimateDisp(self.eData.Y-self.T)
 
+        self.Scale={'coefs':1.,'integral':1.}
+        
         self.Vals={'Chi2':0.,'Scilling':0.,'Total':0.}
         self.Grads=self.Vals.copy()
         self.Hesses=self.Vals.copy()
@@ -89,29 +91,10 @@ class MaxEntropy:
         self.Status='Start'
         self.iH=np.arange(len(self.u))
 
-#        for Name in self.Vals.keys():
-#            self.Vals[Name]=GetValue(Name,self.X, self.Y, self.T, self.p, self.tData.a, self.tData.kernel)
-#            self.Grads[Name]=GetGradient(Name,self.X, self.Y, self.T, self.p, self.tData.a, self.tData.kernel)
-#            self.Hesses[Name]=GetHessian(Name,self.X, self.Y, self.T, self.p, self.tData.a, self.tData.kernel)#
-#
-#        if lagrange==0:
-#            self.lagr=2*self.Vals['Scilling']/(self.Vals['Chi2']/self.disp+self.Vals['Scilling'])
-#        else: self.lagr=lagrange
-        
-#        self.Grad=np.zeros(len(self.u))
-#        self.Grad[:(len(self.Grad)-1)]=-self.Grads['Scilling']+self.lagr*self.Grads['Chi2']/self.disp
-#        self.Grad[len(self.Grad)-1]=self.Vals['Chi2']/self.disp-1
+        self.C=np.zeros(shape=(len(self.p),len(self.eData.X)))  # матрица функций
+        self.A=np.zeros(shape=(len(self.p),len(self.p)))     # характериситческая матрица
 
         self.Hessian=np.zeros(shape=(len(self.u),len(self.u)))
-#        self.Hessian[:(len(self.u)-1),:(len(self.u)-1)]=self.lagr*self.Hesses['Chi2']/self.disp
-#        for j in range(len(self.u)-1):
-#            self.Hessian[j,j]-=self.Hesses['Scilling'][j]
-#            self.Hessian[j,len(self.u)-1]=self.Grads['Chi2'][j]/self.disp
-#            self.Hessian[len(self.u)-1,j]=self.Hessian[j,len(self.u)-1]
-
-#        self.fig2, self.axd2 =plt.subplot_mosaic([['Kinetics'],['Residuals'],['Distribution']],
-#                                            figsize=(6,6), height_ratios=[2,1,2],
-#                                            tight_layout=True, label='MaxEtr analisys')
         
     @property
     def p(self): return self.u[:self.tData.N]
@@ -177,9 +160,10 @@ class MaxEntropy:
         #2*lamda/(len(self.X)*self.disp)*self.A[iDiag]-self.Hesses['Scilling']
 
         self.Hessian[len(p),:len(p)]=self.Grads['Chi2']
-        for j in range(len(self.p)):
-#            self.Hessian[j,j]-=self.Hesses['Scilling'][j]
-            self.Hessian[j,len(self.p)]=self.Hessian[len(self.p),j]
+        self.Hessian=np.transpose(self.Hessian)
+        self.Hessian[len(p),:len(p)]=self.Grads['Chi2']
+#        for j in range(len(self.p)):
+#            self.Hessian[j,len(self.p)]=self.Hessian[len(self.p),j]
  
         
     def Reset(self, eData,tData,lagrange):
@@ -200,8 +184,6 @@ class MaxEntropy:
             self.listVals[name].clear()
             self.listGrads[name].clear()
             
-        self.C=np.zeros(shape=(len(self.p),len(self.eData.X)))  # матрица функций
-        self.A=np.zeros(shape=(len(self.p),len(self.p)))     # характериситческая матрица
         for j in range(len(self.p)):
             self.C[j]=np.array(self.tData.kernel(self.eData.X,self.tData.a[j]))
             if sum(self.eData.R)>0:
@@ -364,7 +346,7 @@ class MaxEntropy:
         v[0]= self.Grads['Total'][:len(self.p)] @ self.dp
         v[1]= self.Vals['Chi2']-1
         return tuple(lg.solve(h,-v,assume_a='sym'))
-    def TuningDisp():
+    def TuningDisp(): pass
         
         
     def Add_dp(self,p,dp):
