@@ -55,6 +55,8 @@ class tData:
         self.kernel=kernel
     @property
     def N(self): return min(len(self.p),len(self.a))
+    def Value(x,j):
+        return coeffs[j]*kernel(x,params[j])
 
 eData_default=eData()
 tData_default=tData()
@@ -125,46 +127,46 @@ class MaxEntropy:
     @property
     def Y(self): return self.eData.Y
     
-    def GetVals(self,p,l, theory=[]):  # значение фуекционалов при заданных p, a, lagrange
+    def GetVals(self,p,l, theory=[],disp=0):  # значение фуекционалов при заданных p, a, lagrange
         vals=self.Vals.copy()
         if len(theory)==0:
             T=np.transpose(self.C) @ p
         else:
             T=theory
-        vals['Chi2']=np.sum(np.square(self.Y-T))/(len(self.Y)*self.disp)
+        if disp==0: disp=self.disp
+        vals['Chi2']=np.sum(np.square(self.Y-T))/(len(self.Y)*disp)
         vals['Scilling']=np.sum(p-p*np.log(p))
         vals['Total']=-vals['Scilling']+l*vals['Chi2']
         return vals
 
-    def GetGrads(self,p,lamda, theory=[]):
+    def GetGrads(self,p,lamda, theory=[], disp=0):
         grads=self.Grads.copy()
         if len(theory)==0:
             T=np.transpose(self.C) @ p
         else:
             T=theory
-        grads['Chi2']=-2/(len(self.X)*self.disp)*(self.B-self.A @ p)
+        if disp==0: disp=self.disp
+        grads['Chi2']=-2/(len(self.X)*disp)*(self.B-self.A @ p)
         grads['Scilling']=-np.log(p)
         grads['Total']=np.zeros(len(self.u))        
         grads['Total'][:len(p)]=-grads['Scilling']+lamda*grads['Chi2']
         grads['Total'][len(p)]=self.Vals['Chi2']-1               
         return grads
 
-    def GetHessian(self,p,lamda, mode ='reset'):     
+    def GetHessian(self,p,lamda, mode ='reset', disp=0):     
         if mode=='reset':
             self.Hessian=np.zeros(shape=(len(self.u),len(self.u)))
-
-        self.Hessian[:len(p),:len(p)]=2*lamda/(len(self.X)*self.disp)*self.A
+        if disp==0: disp=self.disp
+        
+        self.Hessian[:len(p),:len(p)]=2*lamda/(len(self.X)*disp)*self.A
         self.Hesses['Scilling']=-np.array(1/p)
         iDiag=np.diag_indices_from(self.A)
         self.Hessian[iDiag]-=self.Hesses['Scilling']
-        #2*lamda/(len(self.X)*self.disp)*self.A[iDiag]-self.Hesses['Scilling']
 
         self.Hessian[len(p),:len(p)]=self.Grads['Chi2']
         self.Hessian=np.transpose(self.Hessian)
         self.Hessian[len(p),:len(p)]=self.Grads['Chi2']
-#        for j in range(len(self.p)):
-#            self.Hessian[j,len(self.p)]=self.Hessian[len(self.p),j]
- 
+
         
     def Reset(self, eData,tData,lagrange):
         self.eData=eData
@@ -183,23 +185,27 @@ class MaxEntropy:
         for name in self.listVals.keys():
             self.listVals[name].clear()
             self.listGrads[name].clear()
+
+        self.C=np.zeros(shape=(len(self.p),len(self.eData.X)))  # матрица функций
+        self.A=np.zeros(shape=(len(self.p),len(self.p)))     # характериситческая матрица
             
         for j in range(len(self.p)):
             self.C[j]=np.array(self.tData.kernel(self.eData.X,self.tData.a[j]))
             if sum(self.eData.R)>0:
-                self.C[j]=np.convolve(self.C[j],self.eData.R)[:len(self.X)]/sum(self.eData.R)            
+                self.C[j]=np.convolve(self.C[j],self.eData.R)[:len(self.X)]/sum(self.eData.R)
+
+        self.p=np.ones(len(self.p))*np.sum(self.Y)/np.sum(self.C) # нормировка на интеграл
+        
         self.A=self.C @ np.transpose(self.C)
         self.B=self.C @ self.eData.Y
         self.T=np.transpose(self.C) @ self.p
 
         self.Res=self.Y-self.T
-        self.disp=EstimateDisp(self.Res,mode='selected', selected=[1,2,3])
-#        self.disp=EstimateDisp(self.Res)
+        self.disp=EstimateDisp(self.Res, mode='selected', selected=[1,2,3])
         
         self.Vals=self.GetVals(self.p,self.lagr,self.T)
         self.Grads=self.GetGrads(self.p,self.lagr,self.T)
-        
-        
+            
         self.GetHessian(self.p,self.lagr)
 
         
@@ -208,29 +214,19 @@ class MaxEntropy:
         self.p=tData.p
         self.lagr=lagrange
         self.iteration+=1
-        
         self.T=np.transpose(self.C) @ self.p
         self.Res=self.Y-self.T
-#        if self.iteration==5: self.disp=min(EstimateDisp(self.Res,mode='full'),self.disp)
-    
-        
+         
         self.Vals=self.GetVals(self.p,self.lagr,self.T)
         self.Grads=self.GetGrads(self.p,self.lagr,self.T)
-
-            
+           
         lstGrads=self.Grads.copy()
-        lstGrads['Chi2']=self.Grads['Chi2'] @ self.dp
-        lstGrads['Scilling']=self.Grads['Scilling'] @ self.dp
-        lstGrads['Total']=self.Grads['Total'] @ self.du
-        
+        for name in lstGrads.keys():                
+            lstGrads[name]=np.sqrt( np.sum(np.square(self.Grads[name] )))
         for name in self.listVals.keys():
             self.listVals[name].append(self.Vals[name])
             self.listGrads[name].append(lstGrads[name])
 
-#        if (self.Status=='Main') and (self.iteration>3):
-#            if (self.listVals['Chi2'][self.iteration-2]-self.listVals['Chi2'][self.iteration-1])<0.1:
-#                self.Status='Tune'
-            
         self.GetHessian(self.p,self.lagr,'')          
             
     def StepOver(self):
@@ -321,7 +317,7 @@ class MaxEntropy:
         f2=self.GetVals(self.Add_dp(self.p,r[2]*self.dp),self.lagr+self.dlagr)[name]
 #        f1=Func(r[1])
 #        f2=Func(r[2])
-        while abs(r[3]-r[0])>0.05:
+        while abs(r[3]-r[0])>0.01:
             if f1<f2:
                 r[3]=r[2]
                 r[2]=r[1]
@@ -346,8 +342,21 @@ class MaxEntropy:
         v[0]= self.Grads['Total'][:len(self.p)] @ self.dp
         v[1]= self.Vals['Chi2']-1
         return tuple(lg.solve(h,-v,assume_a='sym'))
-    def TuningDisp(): pass
-        
+
+    def TuningDisp(self, eps):
+        hh=np.zeros(shape=(len(self.u),len(self.u)))
+        gg=np.zeros(len(self.u))
+        hh[:len(self.p),:len(self.p)]=2*self.lagr/(len(self.X)*self.disp)*self.A
+        hh[len(self.p),:len(self.p)]=self.Grads['Chi2']
+        hh=np.transpose(hh)
+        hh[len(self.p),:len(self.p)]=self.Grads['Chi2']
+
+        gg[:len(self.p)]=self.Grads['Chi2']
+        gg[len(self.p)]=self.Vals['Chi2']
+
+        ddu=self.du.copy()
+        ddu=lg.solve(self.Hessian+eps*hh,-eps*gg,assume_a='sym')
+        return ddu
         
     def Add_dp(self,p,dp):
         pp=p+dp

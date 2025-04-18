@@ -21,7 +21,7 @@ def ClickedReset():
     p,a = MEM.InitDistribution(memData['Start'],memData['End'],memData['Point number'], prms_type='log')
     setData.p=p
     setData.a=a
-    setData.p=np.ones(len(p))*sum(expData.Y)/np.sum(myMEM.C)
+#    setData.p=np.ones(len(p))*sum(expData.Y)/np.sum(myMEM.C)
 
 
     
@@ -36,13 +36,19 @@ def quitclicked():
     window.destroy()
     
 def SimulateClicked():
+    
     ApplyVarToData()
     ApplyDataToVar()
+    
 #    global Kinetics
 
+    simData.a=list(map(float,lstData['Decay time'].split(',')))
+    simData.p=list(map(float,lstData['Amplitude'].split(',')))
+    simData.p=simData.p/np.sum(simData.p)
+
     expData.X=np.arange(0,lstData['Total time'], lstData['Total time']/lstData['Point number'])
-    simData.a=[lstData['Decay time']]
-    simData.p=[1.]
+#    simData.a=[lstData['Decay time']]
+#    simData.p=[1.]
     expData.R=MEM.GetResponse(expData.X,lstData['Total time']/lstData['Point number'],lstData['Pulse width'])
     expData.Y=MEM.GetTheory(expData,simData)
     expData.Y+=np.random.normal(0, lstData['Noise'], len(expData.X))                     
@@ -96,8 +102,7 @@ def ClickedStepOver():
     global iteration
     
     myMEM.StepOver()
-    k,f = myMEM.MyGolden(name='Chi2')
-    k2,l2=myMEM.StepTune()
+    k,f = myMEM.MyGolden(name='Total')
 
     print(myMEM.iteration,': ', end='')
     for name in myMEM.Vals.keys():
@@ -105,20 +110,26 @@ def ClickedStepOver():
     print(f'  lagr: {round(myMEM.lagr,4)}, dlagr: {round(myMEM.dlagr,4) }, Golden: {round(k,4)}')
 
     myMEM.p=myMEM.p+k*myMEM.dp
-#    vals=myMEM.GetVals(myMEM.p,myMEM.lagr)
-#    if vals['Total']>f: myMEM.lagr+=myMEM.dlagr   
-
-    #myMEM.lagr=sum(myMEM.Grads['Scilling'])/sum(myMEM.Grads['Chi2'])   #*(1+2**(-iteration))
-#    if myMEM.Vals['Chi2']>1.1:
-    #myMEM.lagr+=k*myMEM.dlagr
-
+ 
     myMEM.lagr+=myMEM.dlagr
     setData.p=myMEM.p
     myMEM.Update(setData,myMEM.lagr)
 
-
     PlotData()
+    
+def ClickedTuningDisp():
+    du=myMEM.TuningDisp(0.02)
+    myMEM.u+=du
+    myMEM.disp=myMEM.disp/1.02
 
+    setData.p=myMEM.p
+    myMEM.Update(setData,myMEM.lagr)
+    
+    for name in myMEM.Vals.keys():
+        print(name,':',round(myMEM.Vals[name],4), end=' ')
+    print(f'  lagr: {round(myMEM.lagr,4)}, dlagr: {round(myMEM.dlagr,4) }}}')
+    
+    PlotData()
     
 def ApplyDataToVar():
     for Name in list(lstData.keys()): lstVar[Name].set(lstData[Name])
@@ -140,13 +151,15 @@ for Name in Pages.keys():
     Pages[Name].pack(fill=BOTH, expand=True)
     notebook.add(Pages[Name], text=Name)
     for c in range(3): Pages[Name].columnconfigure(index=c, weight=1)
-    for r in range(7): Pages[Name].rowconfigure(index=r,weight=1)
+    for r in range(8): Pages[Name].rowconfigure(index=r,weight=1)
 
 
 # =========== страница симуляции кинетик =========================
-lstData={'Total time':100.0, 'Point number':200, 'Decay time':10.0,
+lstData={'Total time':100.0, 'Point number':200,
+         'Decay time':'10.0', 'Amplitude':'1.0',
          'Pulse width':2.,'Noise':0.04}
-lstVar={'Total time':DoubleVar(), 'Point number':IntVar(), 'Decay time':DoubleVar(),
+lstVar={'Total time':DoubleVar(), 'Point number':IntVar(),
+        'Decay time':StringVar(), 'Amplitude':StringVar(),
          'Pulse width':DoubleVar(),'Noise':DoubleVar()}
 
 rw=1
@@ -159,10 +172,10 @@ for Name in list(lstData.keys()):
     rw+=1
 
 btnSimulate=ttk.Button(Pages['Simulation'],text="Simulate", command=SimulateClicked)
-btnSimulate.grid(column=0, row=6)
+btnSimulate.grid(column=0, row=7)
 
 btnQ=ttk.Button(Pages['Simulation'],text="Quit",command=quitclicked)
-btnQ.grid(column=1, row=6)
+btnQ.grid(column=1, row=7)
 
 #================ Страница Макс этропии анализа ===================
 memData={'Start':0.5,'End':100,'Point number':100,'lagrange':1.}
@@ -177,13 +190,16 @@ for Name in list(memData.keys()):
     rw+=1
 
 btnInit=ttk.Button(Pages['MaxEnt Analisys'],text='Reset', command=ClickedReset)
-btnInit.grid(column=0,row=6)
+btnInit.grid(column=0,row=7)
 
 btnStepOver=ttk.Button(Pages['MaxEnt Analisys'],text='Stepover', command=ClickedStepOver)
-btnStepOver.grid(column=1,row=6)
+btnStepOver.grid(column=1,row=7)
 
 btnShowVals=ttk.Button(Pages['MaxEnt Analisys'],text='Show vals/grads', command=ClickedShowVals)
-btnShowVals.grid(column=2,row=6)
+btnShowVals.grid(column=2,row=7)
+
+btnShowVals=ttk.Button(Pages['MaxEnt Analisys'],text='Tunig Dispersion', command=ClickedTuningDisp)
+btnShowVals.grid(column=1,row=8)
 
 
 # ====================== описание графиков ======================
