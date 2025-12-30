@@ -4,75 +4,48 @@ import scipy.linalg as lg
 import matplotlib.pyplot as plt
 
 class single_var:
-    def __init__(self,coeffs=[], params=[], name='', kernel=lambda x , y: int(x==y))
+    def __init__(self,coeffs=[], params=[], shennon=False, gradient_type='normal', kernel=lambda x , y: np.float64(x==y)):
         self.__kernel=kernel        
-        self.N=len(self.coeffs)
-        self.v=np.array([coeffs,params])
-        self.name=name
-        
-        @property
-        def coeffs(self): return self.v[0]
-        @coeffs.setter
-        def coeffs(self,p): self.v[0]=p
-        @property
-        def params(self): return self.v[1]
-        @params.setter
-        def params(self,p): self.v[1]=p
+        self.N=len(coeffs)
+        self.__v=np.array([coeffs,params])
 
-        def theory_column(xdata,j):
-        return np.array(self.__kernel(xdata, params[j]))
-class mult_vars(lagrange=1.0,**uvar): # uvar: name=single_var
-    def __init__(self)
-        self.ranges=uvar.copy()
+        self.__index=slice(self.N)
+        self.shennon=shennon
         
-        
-class united_vars:
-    def __init_(self.p=[],lagrange=1.0,gradient_type='normal')
-        self.__p=np.array(p)
-        self.__lnp=np.log(p)
-        self.__lagrange=lagrange
-        self.__gradient=gradient_type
-        if gradient_type=='log':
-            self.__u=np.concatenate(self.__lnp,self.__lagrange)
-        else
-            self.__u=np.concatenate(self.__p,self.__lagrange)
-        self.__range_p=range(len(self/__p))
-        self.__index_l=len(self.__u)
-        self.__du=np.zeros(len(self.__u))
     @property
-    def p(self):
-        if gradient=='log': return self.__p
-        else: return self.__u[self.__range_p]
+    def coeffs(self): return self.__v[0]
+    @coeffs.setter
+    def coeffs(self,p): self.__v[0]=p
+    @property
+    def params(self): return self.__v[1]
+    @params.setter
+    def params(self,p): self.__v[1]=p
+
+    def theory_column(self,xdata,j):
+        return np.array(self.__kernel(xdata, self.params[j]))
+
+def mult_v(**sv):
+    N=0
+    for name in sv.keys():
+        sv[name].__index=slice(N,N+sv[name].N)
+        N+=sv[name].N
+    return sv
+
+class mult_vars: 
+    def __init__(self,**uvar):  # uvar: name=single_var
+        self.N=0
+        self.sv=uvar
+        for name in uvar.keys():
+            uvar[name].__index=slice(self.N,self.N+uvar[name].N)
+            if uvar[name].shennon: self.shennon=uvar[name]
+            self.N+=uvar[name].N           
+        self.du=np.zeros(self.N+1) # размер параметров + лагранж
+        self.lagrange=1 #lagrange
+
+    @property
+    def p(self): return self.shennon.coeffs
     @p.setter
-    def p(self,pp):
-        if gradient=='log':
-            self.__p=pp
-            self.__u[self.__range_p]=np.log(pp)
-        else:
-            self.__u[self.__range_p]=pp
-            self.__lnp=np.log(pp)
-    @property
-    def lnp(self):
-        if gradient=='log': return self.__u[self.__range_p]
-        else: return self.__lnp
-    @property
-    def lagrange(self): return self.__u[self.__index_l]
-    @lagrange.setter
-    def lagrange(seld,lagr): self.__u[self.__index_l]=lagr
-
-    @property
-    def u(self): return self.__u
-    @u.setter
-    def u(self,uu):
-        self.__u=uu
-        if gradient=='log':
-            self.__p=np.exp(uu)
-        else:
-            self.__lnp=np.log(uu)
-    @property
-    def du(self): return self.__du
-    @du.setter(self, ddu): self.__du=ddu
-    def dp(self): return self.__du[self.__range_p]
+    def p(self,pp): self.shennon.coeffs=pp
 
         
 class DataModelling:
@@ -98,7 +71,10 @@ class DataModelling:
     
         self.__C=0
         self.__A=0
-    
+        
+        self.functions=0
+        self.N=0 # количесво всех коэффициентов без Лагранжа
+        
         self.Vals={'Chi2':0.,'Shennon':0.,'Total':0.}
         self.Grads=self.Vals.copy()
         self.Hesses=self.Vals.copy()
@@ -213,6 +189,15 @@ class DataModelling:
         else:
             self.__R=np.array(response_function(xdata))
             self.Ranges['R']=ranges(len(xdata))
+# добавление фунций ядра
+    def init_functions(self, **sv)
+        self.N=0
+        for name in sv.keys():
+            sv[name].__index=slice(self.N,self.N+sv[name].N)
+            if sv[name].shennon: self.shennon=sv[name]
+            self.N+=sv[name].N
+        self.functions=sv
+    
 # начальное значение функции распеределения (образа)
     def initial_image(self, number, step_type='uniform', range=[0,1], gradient_type='normal'):
 
@@ -228,43 +213,58 @@ class DataModelling:
             case 'uniform': self.a=np.arange(range[0], range[1], (range[1]-range[0])/number)
             case 'log': self.a=np.geomspace(range[0], range[1], number)
 
-        self.__C=np.zeros(shape=(len(self.X),len(self.u.p)))  # матрица функций C[i,j]=f(xi,pj]
-        self.__A=np.zeros(shape=(len(self.u.p),len(self.u.p)))     # характериситческая матрица
+        self.__C=np.zeros(shape=(len(self.X),self.N))  # матрица функций C[i,j]=f(xi,pj]
+        self.__A=np.zeros(shape=(self.N,self.N)     # характериситческая матрица
 
-        
+    def cacluate_theory(self,functions):
+        T=np.zeros(len(self.X))       
+        for name in functions.keys():
+            T+=self.__CC[:,functions[name].__index] @ functions[name].coeffs
+        return self.__fY(T)
     def create_matices(self, norma=1.0):
-        for j in range(len(self.p)):
-            self.__C[:,j]=np.array(norma*self.__kernel(self.X-self.X[0],self.a[j]))
-            if sum(self.R)>0:
-                self.__C[:,j]=np.convolve(self.__C[:,j],self.R)[:len(self.X)]/sum(self.R)
+        jj=0
+        for name in functions.key():
+            for j in range(functions[name].N):
+                self.__C[:,jj]=functions[name].theory_column(self.X-self.X[0],j))
+                if sum(self.R)>0:
+                    self.__C[:,jj]=np.convolve(self.__C[:,jj],self.R)[:len(self.X)]/sum(self.R)               
+                jj+=1
+
+#        for j in range(len(self.p)):
+#            self.__C[:,j]=np.array(norma*self.__kernel(self.X-self.X[0],self.a[j]))
+#            if sum(self.R)>0:
+#                self.__C[:,j]=np.convolve(self.__C[:,j],self.R)[:len(self.X)]/sum(self.R)
+
         self.__A=np.transpose(self.__C) @ self.__C # характериситческая матрица
 
-        self.T=self.__fY(self.__C @ self.p)    # теоретическия фунция
+        self.T=self.calculate_theory(self.functions)    # теоретическия фунция
+        
         self.Res=self.Y-self.T # невязка
         self.disp=EstimateDisp(self.Res, mode='selected', selected=[1,2,3]) # оценка дисперсии сигма-квадрат
 
-        self.Grads['Total']=np.zeros(len(self.u))
-        self.Hesses['Total']=np.zeros(shape=(len(self.u),len(self.u)))
+        self.Grads['Total']=np.zeros(self.N+1))
+        self.Hesses['Total']=np.zeros(shape=(self.N+1,self.N+1))
         
     def calculate_values(self, name='', u=[]):
             if len(u)==len(self.u):
                 self.u=u
-                self.Res=self.Y-self.__fY(self.__C @ self.p)
+                self.Res=self.Y-self.calculate_theory(self.functions))
+                
             self.Vals['Chi2']=np.sum(np.square(self.Res))/(len(self.X)*self.disp)              
-            self.Vals['Shennon']=np.sum(self.p-self.p*np.log(self.p))
+            self.Vals['Shennon']=np.sum(self.shennon.coeffs*(1-np.log(self.shennon.coeffs)))
             self.Vals['Total']=-self.Vals['Shennon']+self.lagrange*(self.Vals['Chi2']-1)
                 
     def calculate_gradients(self, name='', u=[]):
             if len(u)==len(self.u):
                 self.u=u
-                self.Res=self.Y-self.__fY(self.__C @ self.p)
+                self.Res=self.Y-self.calculate_theory(self.functions))
             match self.Settings['Gradient']:
                 case 'log':
                     self.Grads['Chi2']=-2/(len(self.X)*self.disp)*(np.transpose(self.__C) @ self.Res)*self.p
-                    self.Grads['Shennon']=-self.lnp*self.p
+                    self.Grads['Shennon']=-np.log(self.shennon.coeffs)*self.shennnon.coeffs
                 case _:
                     self.Grads['Chi2']=-2/(len(self.X)*self.disp)*(np.transpose(self.__C) @ self.Res)
-                    self.Grads['Shennon']=-self.lnp
+                    self.Grads['Shennon']=-np.log(self.shennon.coeffs)
                     
             self.Grads['Total'][:len(self.p)]=-self.Grads['Shennon']+self.lagrange*self.Grads['Chi2']
             self.Grads['Total'][len(self.p)]=self.Vals['Chi2']-1
